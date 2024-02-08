@@ -6,3 +6,4 @@ nest-asyncio==1.5.8
 langchain_openai
 sentence-transformers==2.3.0
 beautifulsoup4==4.12.3
+lxml==5.1.0
