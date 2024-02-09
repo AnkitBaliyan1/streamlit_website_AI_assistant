@@ -2,113 +2,80 @@ import streamlit as st
 from utils import *
 #import constants
 
-# Creating Session State Variable
-if 'HuggingFace_API_Key' not in st.session_state:
-    st.session_state['HuggingFace_API_Key'] =''
-if 'Pinecone_API_Key' not in st.session_state:
-    st.session_state['Pinecone_API_Key'] =''
-
-PINECONE_ENVIRONMENT="gcp-starter"
-PINECONE_INDEX="chatbotdb"
-
-#
-st.title('🤖 AI Assistance For Website') 
-
-#********SIDE BAR Funtionality started*******
-
-# Sidebar to capture the API keys
-st.sidebar.title("😎🗝️")
-st.session_state['HuggingFace_API_Key']= st.sidebar.text_input("What's your HuggingFace API key?",type="password")
-st.session_state['Pinecone_API_Key']= st.sidebar.text_input("What's your Pinecone API key?",type="password")
-st.session_state['OPENAI_API_KEY']= st.sidebar.text_input("What's your OPENAI API key?",type="password")
-website = st.sidebar.text_input("Enter the website")
-
-#Recent changes by langchain team, expects ""PINECONE_API_KEY" environment variable for Pinecone usage! So we are creating it here
-import os
-os.environ["PINECONE_API_KEY"] = st.session_state['Pinecone_API_Key']
-os.environ["OPENAI_API_KEY"]=st.session_state['OPENAI_API_KEY']
+# Main function
+def main():
+    st.title('🤖 AI Assistance For Website')
 
 
-load_button = st.sidebar.button("Load data to Pinecone", key="load_button")
+    # Creating Session State Variable
+    if 'HuggingFace_API_Key' not in st.session_state:
+        st.session_state['HuggingFace_API_Key'] =''
+    if 'Pinecone_API_Key' not in st.session_state:
+        st.session_state['Pinecone_API_Key'] =''
+    
+    # Sidebar to capture the API keys
+    st.sidebar.title("😎🗝️")
+    st.session_state['HuggingFace_API_Key'] = st.sidebar.text_input("What's your HuggingFace API key?", type="password")
+    st.session_state['Pinecone_API_Key'] = st.sidebar.text_input("What's your Pinecone API key?", type="password")
+    st.session_state['OPENAI_API_KEY'] = st.sidebar.text_input("What's your OPENAI API key?", type="password")
+    website = st.sidebar.text_input("Enter the website")
 
-#If the bove button is clicked, pushing the data to Pinecone...
-if load_button:
-    #Proceed only if API keys are provided
-    if st.session_state['HuggingFace_API_Key'] !="" and st.session_state['Pinecone_API_Key']!="" :
-
-        #Fetch data from site
-        website_xml = main_xml_url(website)
-        if website_xml:
-            with st.spinner("loading website data.."):
-                site_data = get_website_data(website_xml)
-                if site_data:
-                    st.sidebar.success("Sitemap content fetched successfully from the given website.")
-            #st.write("Data pull done...")
-
-            #Split data into chunks
-            chunks_data=split_data(site_data)
-            #st.write("Spliting data done...")
-
-            #Creating embeddings instance
-            embeddings=create_embeddings(api_key=os.environ["OPENAI_API_KEY"])
-            #st.write("Embeddings instance creation done...")
-
-            #Push data to Pinecone
-            
-            push_to_pinecone(st.session_state['Pinecone_API_Key'],PINECONE_ENVIRONMENT,PINECONE_INDEX,embeddings,chunks_data)
-            #st.write("Pushing data to Pinecone done...")
-
-            st.sidebar.success("Data pushed to Pinecone successfully! Ready to take your question")
+    PINECONE_ENVIRONMENT="gcp-starter"
+    PINECONE_INDEX="chatbotdb"
+    
+    load_button = st.sidebar.button("Load data to Pinecone", key="load_button")
+    
+    if load_button:
+        if st.session_state['HuggingFace_API_Key'] and st.session_state['Pinecone_API_Key'] and st.session_state['OPENAI_API_KEY']:
+            website_xml = get_sitemap_url(website)
+            if website_xml:
+                with st.spinner("Loading website data..."):
+                    site_data = get_website_data(website_xml)
+                    if site_data:
+                        st.sidebar.success("Sitemap content fetched successfully from the given website.")
+                chunks_data = split_data(site_data)
+                embeddings = create_embeddings(api_key=st.session_state['OPENAI_API_KEY'])
+                if embeddings:
+                    index = push_to_pinecone(st.session_state['Pinecone_API_Key'], "gcp-starter", "chatbotdb", embeddings, chunks_data)
+                    if index:
+                        st.sidebar.success("Data pushed to Pinecone successfully! Ready to take your question")
+                    else:
+                        st.sidebar.error("Failed to push data to Pinecone.")
+                else:
+                    st.sidebar.error("Failed to create embeddings instance.")
+            else:
+                st.sidebar.error("No sitemap found for the given website.")
         else:
-            st.write("No sitemap found for the given website.")
-            
-    else:
-        st.sidebar.error("Ooopssss!!! Please provide API keys.....")
+            st.sidebar.error("Please provide API keys.")
 
-#********SIDE BAR Funtionality ended*******
+    prompt = st.text_input('How can I help you?', key="prompt")
+    document_count = st.slider('Number of links to return:', 0, 5, 2, step=1)
+    submit = st.button("Search")
 
-#Captures User Inputs
-prompt = st.text_input('How can I help you my friend ❓',key="prompt")  # The box for the text prompt
-document_count = st.slider('No.Of links to return 🔗 - (0 LOW || 5 HIGH)', 0, 5, 2,step=1)
-
-submit = st.button("Search") 
-
-
-if submit:
-    #Proceed only if API keys are provided
-    if st.session_state['HuggingFace_API_Key'] !="" and st.session_state['Pinecone_API_Key']!="" and st.session_state['Pinecone_API_Key']!="":
-
-        #Creating embeddings instance
-        embeddings=create_embeddings(api_key=os.environ["OPENAI_API_KEY"])
-        #st.write("Embeddings instance creation done...")
-
-        #Pull index data from Pinecone
-        index=pull_from_pinecone(st.session_state['Pinecone_API_Key'],PINECONE_ENVIRONMENT,PINECONE_INDEX,embeddings)
-        #st.write("Pinecone index retrieval done...")
-
-        if prompt:
-            #Fetch relavant documents from Pinecone index
-            relavant_docs=get_similar_docs(index,prompt,document_count)
-            #st.write(relavant_docs)
-
-            #Displaying search results
-            st.success("Please find the search results :")
-            #Displaying search results
-            st.write("search results list....")
-            for document in relavant_docs:
-                
-                st.write("👉**Result : "+ str(relavant_docs.index(document)+1)+"**")
-                st.write("**Info**: "+document.page_content)
-                st.write("**Link**: "+ document.metadata['source'])
-
+    if submit:
+        if st.session_state['HuggingFace_API_Key'] and st.session_state['Pinecone_API_Key'] and st.session_state['OPENAI_API_KEY']:
+            embeddings = create_embeddings(api_key=st.session_state['OPENAI_API_KEY'])
+            if embeddings:
+                index = pull_from_pinecone(st.session_state['Pinecone_API_Key'], "gcp-starter", "chatbotdb", embeddings)
+                if index:
+                    if prompt:
+                        relevant_docs = get_similar_docs(index, prompt, document_count)
+                        if relevant_docs:
+                            st.success("Please find the search results:")
+                            for document in relevant_docs:
+                                st.write(f"Result: {relevant_docs.index(document)+1}")
+                                st.write(f"Info: {document.page_content}")
+                                st.write(f"Link: {document.metadata['source']}")
+                        else:
+                            st.error("Failed to get search results.")
+                    else:
+                        st.success("I'm ready, you can ask me anything.")
+                else:
+                    st.error("Failed to pull data from Pinecone.")
+            else:
+                st.error("Failed to create embeddings instance.")
         else:
-            st.success("I'm ready, you can ask me anything.")
-
-        
-      
-
-    else:
-        st.sidebar.error("Ooopssss!!! Please provide API keys.....")
-
-
-   
+            st.error("Please provide API keys.")
+            
+if __name__ == "__main__":
+    main()
